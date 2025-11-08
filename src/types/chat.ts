@@ -1,6 +1,6 @@
-export interface ChatMessage {
+export interface QAItem {
   id: string;
-  text: string;
-  sender: string;
-  timestamp: string;
+  question: string;
+  answer: string;
+  askedAt: string;
 }

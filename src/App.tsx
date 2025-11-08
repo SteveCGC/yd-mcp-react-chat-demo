@@ -1,72 +1,77 @@
-import { FormEvent, useCallback, useEffect, useState } from 'react';
+import { FormEvent, useState } from 'react';
 import './app.css';
 import { graphqlClient } from './lib/graphqlClient';
-import type { ChatMessage } from './types/chat';
+import type { QAItem } from './types/chat';
 
-const GET_MESSAGES = /* GraphQL */ `
-  query GetMessages {
-    messages {
-      id
-      text
-      sender
-      timestamp
+const idFactory = () =>
+  typeof crypto !== 'undefined' && 'randomUUID' in crypto
+    ? crypto.randomUUID()
+    : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+
+const ASK_QUESTION_MUTATION = /* GraphQL */ `
+  mutation AskQuestion($question: String!) {
+    askQuestion(question: $question) {
+      answer
+      askedAt
     }
   }
 `;
 
-const SEND_MESSAGE = /* GraphQL */ `
-  mutation SendMessage($text: String!, $sender: String!) {
-    sendMessage(text: $text, sender: $sender) {
-      id
-      text
-      sender
-      timestamp
-    }
-  }
-`;
+type AskQuestionResult = {
+  askQuestion?: {
+    answer: string;
+    askedAt?: string;
+  };
+};
 
-const DEFAULT_SENDER = 'browser-demo';
+type LegacyJsonResult = {
+  answer?: string;
+};
 
 export default function App() {
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [pendingText, setPendingText] = useState('');
+  const [history, setHistory] = useState<QAItem[]>([]);
+  const [question, setQuestion] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchMessages = useCallback(async () => {
-    try {
-      setError(null);
-      const data = await graphqlClient.request<{ messages: ChatMessage[] }>(GET_MESSAGES);
-      setMessages(data.messages ?? []);
-    } catch (err) {
-      console.error('Failed to load messages', err);
-      setError('无法加载历史消息，请检查 Worker 是否已经部署。');
-    }
-  }, []);
-
-  useEffect(() => {
-    fetchMessages();
-  }, [fetchMessages]);
-
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!pendingText.trim()) return;
+    const trimmed = question.trim();
+    if (!trimmed) return;
 
     setIsLoading(true);
     setError(null);
-    try {
-      const data = await graphqlClient.request<{ sendMessage: ChatMessage }>(SEND_MESSAGE, {
-        text: pendingText.trim(),
-        sender: DEFAULT_SENDER
-      });
 
-      if (data.sendMessage) {
-        setMessages((prev) => [...prev, data.sendMessage]);
+    try {
+      const response = ((await graphqlClient.request<AskQuestionResult & LegacyJsonResult>(
+        ASK_QUESTION_MUTATION,
+        { question: trimmed }
+      )) ?? {}) as AskQuestionResult & LegacyJsonResult & Record<string, unknown>;
+      debugger
+      const payload = response?.askQuestion;
+      const answerFromGraphQL = payload?.answer;
+      const fallbackAnswer =
+        response && typeof response === 'object' && 'answer' in response
+          ? (response as LegacyJsonResult).answer
+          : undefined;
+      const finalAnswer = answerFromGraphQL ?? fallbackAnswer;
+
+      if (!finalAnswer) {
+        throw new Error('Worker 没有返回 answer 字段');
       }
-      setPendingText('');
+
+      const entry: QAItem = {
+        id: idFactory(),
+        question: trimmed,
+        answer: finalAnswer,
+        askedAt: payload?.askedAt ?? new Date().toISOString()
+      };
+      setHistory((prev) => [...prev, entry]);
+      setQuestion('');
     } catch (err) {
-      console.error('Failed to send message', err);
-      setError('发送失败，请查看浏览器控制台日志。');
+      console.error('Failed to get answer from Worker', err);
+      const message = err instanceof Error ? err.message : '请求失败，请稍后再试。';
+      setError(message);
     } finally {
       setIsLoading(false);
     }
@@ -76,47 +81,57 @@ export default function App() {
     <main className="app">
       <section className="chat-panel">
         <header>
-          <h1>Cloudflare Worker GraphQL Chat</h1>
-          <button type="button" onClick={fetchMessages} disabled={isLoading}>
-            刷新
-          </button>
+          <div>
+            <h1>Cloudflare Worker 问答演示</h1>
+            <p className="subtitle">使用 GraphQL mutation 发送问题，Worker 返回结构化回答</p>
+          </div>
+          {isLoading && <span className="status">正在请求...</span>}
         </header>
+
         <div className="messages" aria-live="polite">
-          {messages.length === 0 && <p className="empty">暂无消息，发送第一条试试看。</p>}
-          {messages.map((message) => (
-            <article key={message.id} className="message">
-              <div className="meta">
-                <span className="sender">{message.sender}</span>
-                <time dateTime={message.timestamp}>{new Date(message.timestamp).toLocaleTimeString()}</time>
+          {history.length === 0 && <p className="empty">请输入问题，Worker 会返回回答内容。</p>}
+          {history.map((item) => (
+            <article key={item.id} className="exchange">
+              <div className="bubble question">
+                <span className="label">提问</span>
+                <p>{item.question}</p>
+                <time dateTime={item.askedAt}>{new Date(item.askedAt).toLocaleTimeString()}</time>
               </div>
-              <p>{message.text}</p>
+              <div className="bubble answer">
+                <span className="label">回答</span>
+                <p>{item.answer}</p>
+              </div>
             </article>
           ))}
         </div>
+
         <form className="composer" onSubmit={handleSubmit}>
           <textarea
-            name="message"
+            name="question"
             rows={3}
-            placeholder="输入要发送到 Worker 的消息..."
-            value={pendingText}
-            onChange={(event) => setPendingText(event.target.value)}
+            placeholder="例如：解释下什么是云计算？"
+            value={question}
+            onChange={(event) => setQuestion(event.target.value)}
             disabled={isLoading}
           />
           <button type="submit" disabled={isLoading}>
-            {isLoading ? '发送中...' : '发送'}
+            {isLoading ? '提交中...' : '发送问题'}
           </button>
         </form>
         {error && <p className="error">{error}</p>}
       </section>
       <aside className="info-panel">
-        <h2>关于本示例</h2>
-        <ul>
-          <li>React + Vite + TypeScript</li>
-          <li>GraphQL 请求由 `graphql-request` 发送到 Cloudflare Worker</li>
-          <li>在 `.env` 文件中配置 Worker 地址和可选的 Bearer Token</li>
-        </ul>
+        <h2>调用约定</h2>
+        <p>GraphQL 请求示例：</p>
+        <pre>{`curl -X POST $WORKER/graphql \\
+  -H "Content-Type: application/json" \\
+  -d '{"query":"mutation($question:String!){ askQuestion(question:$question){ answer askedAt }}","variables":{"question":"解释下什么是云计算"}}'`}</pre>
         <p>
-          可在 <code>workers/chat-graphql-worker.ts</code> 查看与之匹配的 Worker 示例，实现更复杂的 schema时只需要扩展 GraphQL 解析逻辑即可。
+          Worker 返回 <code>{'{"data":{"askQuestion":{"answer":"...","askedAt":"..."}}}'}</code>，组件会把回答显示在问题下方。
+        </p>
+        <p>
+          在 <code>.env</code> 中配置 <code>VITE_WORKER_GRAPHQL_ENDPOINT</code> 指向你的 Cloudflare Worker，若需要鉴权可继续使用{' '}
+          <code>VITE_WORKER_API_TOKEN</code>。
         </p>
       </aside>
     </main>
