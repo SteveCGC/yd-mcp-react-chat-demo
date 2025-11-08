@@ -1,11 +1,11 @@
 # yd-mcp-react-chat-demo
 
-A lightweight React (Vite + TypeScript) demo that sends GraphQL requests to a Cloudflare Worker. The UI behaves like a compact chat client: it loads the latest messages and lets you send a new one with a single mutation. Use it as a starting point for experimenting with Worker-hosted GraphQL APIs.
+A lightweight React (Vite + TypeScript) demo that sends GraphQL requests to a Cloudflare Worker. The UI mimics the terminal screenshot you shared: type a natural-language question, the Worker issues a GraphQL mutation such as `{ askQuestion { answer } }`, and the response appears right beneath the question.
 
 ## Tech stack
 - React 18 with Vite 5 for fast local dev
-- `graphql-request` as the tiny GraphQL client
-- Cloudflare Workers (sample script included) as the GraphQL endpoint
+- `graphql-request` as the minimal GraphQL client
+- Cloudflare Workers (sample script included) as the Q&A endpoint
 
 ## Getting started
 1. **Install deps**
@@ -22,30 +22,35 @@ A lightweight React (Vite + TypeScript) demo that sends GraphQL requests to a Cl
    ```
    Vite runs on <http://localhost:5173> by default.
 
-## GraphQL shape used by the UI
-```graphql
-query GetMessages {
-  messages {
-    id
-    text
-    sender
-    timestamp
-  }
-}
+## Request/response format (GraphQL)
+The browser and the Worker communicate via GraphQL. Equivalent `curl` request:
 
-mutation SendMessage($text: String!, $sender: String!) {
-  sendMessage(text: $text, sender: $sender) {
-    id
-    text
-    sender
-    timestamp
+```bash
+curl -X POST $WORKER/graphql \
+  -H "Content-Type: application/json" \
+  -d '{
+    "query":"mutation($question:String!){ askQuestion(question:$question){ answer askedAt }}",
+    "variables":{"question":"解释下什么是云计算"}
+  }'
+```
+
+The Worker replies with standard GraphQL JSON:
+
+```json
+{
+  "data": {
+    "askQuestion": {
+      "answer": "云计算是一种通过互联网提供计算资源的模式...",
+      "askedAt": "2025-11-08T15:30:00.000Z"
+    }
   }
 }
 ```
-Your Worker only needs to implement the two operations above, but you can easily extend the component to support subscriptions or streaming results.
+
+The React component renders the `question` and `answer` pair as stacked chat bubbles.
 
 ## Sample Cloudflare Worker
-`workers/chat-graphql-worker.ts` contains a fully inlined Worker script that handles the exact queries/mutations used in the UI. It stores chat history in-memory for simplicity, but you can wire it up to KV/Durable Objects/R2 by replacing the `MessageStore` implementation.
+`workers/chat-graphql-worker.ts` exposes the exact GraphQL schema shown above: it inspects the `askQuestion` mutation and returns a canned `answer`. Replace the placeholder logic with AI calls, search results, or any other data source.
 
 Deploying the Worker (basic flow):
 1. Install Wrangler and log in – `npm i -g wrangler && wrangler login`.
@@ -56,10 +61,10 @@ Deploying the Worker (basic flow):
 ## Environment variables
 | Name | Description |
 | --- | --- |
-| `VITE_WORKER_GRAPHQL_ENDPOINT` | Required. Full HTTPS URL to the Worker (e.g. `https://chat-api.your-worker.workers.dev/graphql`). |
+| `VITE_WORKER_GRAPHQL_ENDPOINT` | Required. Full HTTPS URL to the GraphQL Worker (e.g. `https://chat-api.your-worker.workers.dev/graphql`). |
 | `VITE_WORKER_API_TOKEN` | Optional bearer token if your Worker requires auth. |
 
 ## Next steps
-- Replace the in-memory store with Durable Objects or KV for persistence.
-- Add authentication (e.g. Cloudflare Access or JWT) and forward the token in `graphqlClient` headers.
-- Expand the schema for typing indicators, streaming answers, or quoting previous messages.
+- Swap the sample answer generator with your actual AI/search pipeline and persist the conversation if needed.
+- Add authentication (e.g. Cloudflare Access or JWT) and forward the token in request headers via `VITE_WORKER_API_TOKEN`.
+- Enhance the UI with streaming responses, markdown rendering, or citations.

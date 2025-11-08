@@ -27,6 +27,17 @@ main.app {
   margin-bottom: 1rem;
 }
 
+.chat-panel header .subtitle {
+  margin: 0.25rem 0 0;
+  color: #64748b;
+  font-size: 0.9rem;
+}
+
+.status {
+  font-size: 0.9rem;
+  color: #2563eb;
+}
+
 .chat-panel button,
 .composer button {
   border: none;
@@ -47,25 +58,53 @@ main.app {
   border: 1px solid #e2e8f0;
   border-radius: 0.75rem;
   padding: 1rem;
-  height: 360px;
+  height: 420px;
   overflow-y: auto;
   margin-bottom: 1rem;
   background: #fefefe;
 }
 
-.message + .message {
+.exchange + .exchange {
   margin-top: 0.75rem;
 }
 
-.message .meta {
+.bubble {
+  border-radius: 1rem;
+  padding: 0.75rem 1rem;
+  margin: 0;
   display: flex;
-  justify-content: space-between;
-  font-size: 0.85rem;
-  color: #475569;
+  flex-direction: column;
+  gap: 0.5rem;
+  box-shadow: 0 8px 30px rgba(15, 23, 42, 0.08);
 }
 
-.message p {
-  margin: 0.25rem 0 0;
+.bubble + .bubble {
+  margin-top: 0.75rem;
+}
+
+.bubble .label {
+  font-size: 0.8rem;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.bubble p {
+  margin: 0;
+  line-height: 1.6;
+}
+
+.bubble time {
+  font-size: 0.8rem;
+  color: #94a3b8;
+}
+
+.bubble.question {
+  background: linear-gradient(135deg, #dbeafe, #bfdbfe);
+}
+
+.bubble.answer {
+  background: linear-gradient(135deg, #ecfccb, #d9f99d);
 }
 
 .composer {
@@ -96,6 +135,14 @@ textarea {
 .info-panel ul {
   padding-left: 1rem;
   line-height: 1.8;
+}
+
+.info-panel pre {
+  background: #0f172a;
+  color: #f8fafc;
+  padding: 0.75rem 1rem;
+  border-radius: 0.75rem;
+  overflow-x: auto;
 }
 
 @media (max-width: 960px) {

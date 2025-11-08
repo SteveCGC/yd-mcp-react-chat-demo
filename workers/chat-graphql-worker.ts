@@ -5,76 +5,76 @@ interface GraphQLPayload {
   variables?: Record<string, unknown>;
 }
 
-interface ChatMessage {
-  id: string;
-  text: string;
-  sender: string;
-  timestamp: string;
+interface AnswerTemplate {
+  keywords: string[];
+  answer: string;
 }
 
-/** Simple in-memory message store (replace with Durable Objects/KV in production). */
-class MessageStore {
-  private messages: ChatMessage[] = [];
-
-  list() {
-    return this.messages;
+const ANSWERS: AnswerTemplate[] = [
+  {
+    keywords: ['云计算', 'cloud computing'],
+    answer:
+      '云计算 (cloud computing) is the on-demand delivery of compute, storage, and networking resources over the internet. ' +
+      'Users can provision capabilities such as processing power or databases without owning physical hardware, paying only for what they consume. ' +
+      'Common service models include IaaS for raw infrastructure, PaaS for managed runtimes, and SaaS for complete applications.'
+  },
+  {
+    keywords: ['worker', 'cloudflare'],
+    answer:
+      'Cloudflare Workers let you run JavaScript, Rust, or WASM on Cloudflare’s global network. ' +
+      'They start instantly, scale automatically, and can sit in front of APIs to handle authentication, caching, or AI orchestration.'
   }
-
-  append(text: string, sender: string) {
-    const entry: ChatMessage = {
-      id: crypto.randomUUID(),
-      text,
-      sender,
-      timestamp: new Date().toISOString()
-    };
-    this.messages.push(entry);
-    return entry;
-  }
-}
-
-const store = new MessageStore();
+];
 
 export default {
   async fetch(request: Request, _env: Env): Promise<Response> {
     if (request.method !== 'POST') {
       return new Response('GraphQL endpoint ready', {
-        headers: { 'content-type': 'text/plain' }
+        headers: { 'content-type': 'text/plain; charset=utf-8' }
       });
     }
 
     let payload: GraphQLPayload;
     try {
-      payload = await request.json<GraphQLPayload>();
+      payload = (await request.json()) as GraphQLPayload;
     } catch {
-      return json({ errors: [{ message: 'Invalid JSON body' }] }, 400);
+      return graphQLJson({ errors: [{ message: 'Invalid JSON body' }] }, 400);
     }
 
     const query = payload.query ?? '';
     const variables = payload.variables ?? {};
 
-    if (query.includes('GetMessages')) {
-      return json({ data: { messages: store.list() } });
-    }
-
-    if (query.includes('SendMessage')) {
-      const text = String(variables.text ?? '').trim();
-      const sender = String(variables.sender ?? 'anonymous').trim();
-
-      if (!text) {
-        return json({ errors: [{ message: 'text is required' }] }, 422);
+    if (query.includes('askQuestion')) {
+      const question = String(variables.question ?? '').trim();
+      if (!question) {
+        return graphQLJson({ errors: [{ message: 'question variable is required' }] }, 422);
       }
 
-      const message = store.append(text, sender || 'anonymous');
-      return json({ data: { sendMessage: message } });
+      const answer = buildAnswer(question);
+      const askedAt = new Date().toISOString();
+      return graphQLJson({ data: { askQuestion: { answer, askedAt } } });
     }
 
-    return json({ errors: [{ message: 'Unsupported operation' }] }, 400);
+    return graphQLJson({ errors: [{ message: 'Unsupported operation' }] }, 400);
   }
 };
 
-function json(body: unknown, status = 200): Response {
+function buildAnswer(question: string): string {
+  const normalized = question.toLowerCase();
+  const template = ANSWERS.find((entry) =>
+    entry.keywords.some((keyword) => normalized.includes(keyword.toLowerCase()))
+  );
+
+  if (template) {
+    return template.answer;
+  }
+
+  return `I heard your question: "${question}". Replace the sample worker logic with your own AI or knowledge-base call to return a richer answer.`;
+}
+
+function graphQLJson(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status,
-    headers: { 'content-type': 'application/json' }
+    headers: { 'content-type': 'application/json; charset=utf-8' }
   });
 }
