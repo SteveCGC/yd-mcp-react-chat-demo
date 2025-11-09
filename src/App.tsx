@@ -82,7 +82,7 @@ export default function App() {
       <section className="chat-panel">
         <header>
           <div>
-            <h1>Cloudflare Worker 问答演示</h1>
+            <h1>Changgongcai Cloudflare Worker 问答演示</h1>
             <p className="subtitle">使用 GraphQL mutation 发送问题，Worker 返回结构化回答</p>
           </div>
           {isLoading && <span className="status">正在请求...</span>}
